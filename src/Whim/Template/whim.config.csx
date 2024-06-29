@@ -54,45 +54,45 @@ void DoConfig(IContext context)
 	context.PluginManager.AddPlugin(barPlugin);
 
 	// Gap plugin.
-	GapsConfig gapsConfig = new() { OuterGap = 0, InnerGap = 10 };
-	GapsPlugin gapsPlugin = new(context, gapsConfig);
-	context.PluginManager.AddPlugin(gapsPlugin);
+	// GapsConfig gapsConfig = new() { OuterGap = 0, InnerGap = 10 };
+	// GapsPlugin gapsPlugin = new(context, gapsConfig);
+	// context.PluginManager.AddPlugin(gapsPlugin);
 
 	// Floating window plugin.
-	FloatingLayoutPlugin floatingLayoutPlugin = new(context);
-	context.PluginManager.AddPlugin(floatingLayoutPlugin);
+	// FloatingLayoutPlugin floatingLayoutPlugin = new(context);
+	// context.PluginManager.AddPlugin(floatingLayoutPlugin);
 
 	// Focus indicator.
-	FocusIndicatorConfig focusIndicatorConfig = new() { Color = new SolidColorBrush(Colors.Red), FadeEnabled = true };
-	FocusIndicatorPlugin focusIndicatorPlugin = new(context, focusIndicatorConfig);
-	context.PluginManager.AddPlugin(focusIndicatorPlugin);
+	// FocusIndicatorConfig focusIndicatorConfig = new() { Color = new SolidColorBrush(Colors.Red), FadeEnabled = true };
+	// FocusIndicatorPlugin focusIndicatorPlugin = new(context, focusIndicatorConfig);
+	// context.PluginManager.AddPlugin(focusIndicatorPlugin);
 
 	// Command palette.
-	CommandPaletteConfig commandPaletteConfig = new(context);
-	CommandPalettePlugin commandPalettePlugin = new(context, commandPaletteConfig);
-	context.PluginManager.AddPlugin(commandPalettePlugin);
+	// CommandPaletteConfig commandPaletteConfig = new(context);
+	// CommandPalettePlugin commandPalettePlugin = new(context, commandPaletteConfig);
+	// context.PluginManager.AddPlugin(commandPalettePlugin);
 
 	// Slice layout.
-	SliceLayoutPlugin sliceLayoutPlugin = new(context);
-	context.PluginManager.AddPlugin(sliceLayoutPlugin);
+	// SliceLayoutPlugin sliceLayoutPlugin = new(context);
+	// context.PluginManager.AddPlugin(sliceLayoutPlugin);
 
 	// Tree layout.
-	TreeLayoutPlugin treeLayoutPlugin = new(context);
-	context.PluginManager.AddPlugin(treeLayoutPlugin);
+	// TreeLayoutPlugin treeLayoutPlugin = new(context);
+	// context.PluginManager.AddPlugin(treeLayoutPlugin);
 
 	// Tree layout bar.
-	TreeLayoutBarPlugin treeLayoutBarPlugin = new(treeLayoutPlugin);
-	context.PluginManager.AddPlugin(treeLayoutBarPlugin);
-	rightComponents.Add(treeLayoutBarPlugin.CreateComponent());
+	// TreeLayoutBarPlugin treeLayoutBarPlugin = new(treeLayoutPlugin);
+	// context.PluginManager.AddPlugin(treeLayoutBarPlugin);
+	// rightComponents.Add(treeLayoutBarPlugin.CreateComponent());
 
 	// Tree layout command palette.
-	TreeLayoutCommandPalettePlugin treeLayoutCommandPalettePlugin =
-		new(context, treeLayoutPlugin, commandPalettePlugin);
-	context.PluginManager.AddPlugin(treeLayoutCommandPalettePlugin);
+	// TreeLayoutCommandPalettePlugin treeLayoutCommandPalettePlugin =
+	// 	new(context, treeLayoutPlugin, commandPalettePlugin);
+	// context.PluginManager.AddPlugin(treeLayoutCommandPalettePlugin);
 
 	// Layout preview.
-	LayoutPreviewPlugin layoutPreviewPlugin = new(context);
-	context.PluginManager.AddPlugin(layoutPreviewPlugin);
+	// LayoutPreviewPlugin layoutPreviewPlugin = new(context);
+	// context.PluginManager.AddPlugin(layoutPreviewPlugin);
 
 	// Updater.
 	UpdaterConfig updaterConfig = new() { ReleaseChannel = ReleaseChannel.Alpha };
@@ -109,11 +109,8 @@ void DoConfig(IContext context)
 	context.WorkspaceManager.CreateLayoutEngines = () =>
 		new CreateLeafLayoutEngine[]
 		{
-			(id) => SliceLayouts.CreateMultiColumnLayout(context, sliceLayoutPlugin, id, 1, 2, 0),
-			(id) => SliceLayouts.CreatePrimaryStackLayout(context, sliceLayoutPlugin, id),
-			(id) => SliceLayouts.CreateSecondaryPrimaryLayout(context, sliceLayoutPlugin, id),
-			(id) => new FocusLayoutEngine(id),
-			(id) => new TreeLayoutEngine(context, treeLayoutPlugin, id)
+			(id) => new LukinoLayoutEngine(context, id)
+			// (id) => SliceLayouts.CreatePrimaryStackLayout(context, sliceLayoutPlugin, id)
 		};
 }
 
