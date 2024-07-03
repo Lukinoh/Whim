@@ -75,11 +75,10 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 		if (IsWindowFloating(window))
 		{
 			FreeLayoutEngine newEngine = (FreeLayoutEngine)_freeLayoutEngine.AddWindow(window);
-			if (!newEngine.Identity.Equals(_freeLayoutEngine.Identity))
+			if (newEngine != _freeLayoutEngine)
 			{
-				Logger.Error("ADDDDDDDDDDDDDD WWWWWWWWWWWWWIIIIIINNNNNNNNNDDDDDDDOOOOOOOOOWWWWWWWWWWWWWS");
-				InnerLayoutEngine.RemoveWindow(window);
-				return new FloatingLayoutEngine(this, InnerLayoutEngine, newEngine);
+				ILayoutEngine newInnerLayoutEngine = InnerLayoutEngine.RemoveWindow(window);
+				return new FloatingLayoutEngine(this, newInnerLayoutEngine, newEngine);
 			}
 		}
 
@@ -114,10 +113,10 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 		if (IsWindowFloating(window))
 		{
 			FreeLayoutEngine newEngine = (FreeLayoutEngine)_freeLayoutEngine.MoveWindowToPoint(window, point);
-			if (!newEngine.Identity.Equals(_freeLayoutEngine.Identity))
+			if (newEngine != _freeLayoutEngine)
 			{
-				InnerLayoutEngine.RemoveWindow(window);
-				return new FloatingLayoutEngine(this, InnerLayoutEngine, newEngine);
+				ILayoutEngine newInnerLayoutEngine = InnerLayoutEngine.RemoveWindow(window);
+				return new FloatingLayoutEngine(this, newInnerLayoutEngine, newEngine);
 			}
 		}
 
@@ -131,24 +130,23 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 		if (IsWindowFloating(window))
 		{
 			FreeLayoutEngine newEngine = (FreeLayoutEngine)_freeLayoutEngine.MoveWindowEdgesInDirection(edge, deltas, window);
-			if (!newEngine.Identity.Equals(_freeLayoutEngine.Identity))
+			if (newEngine != _freeLayoutEngine)
 			{
-				InnerLayoutEngine.RemoveWindow(window);
-				return new FloatingLayoutEngine(this, InnerLayoutEngine, newEngine);
+				ILayoutEngine newInnerLayoutEngine = InnerLayoutEngine.RemoveWindow(window);
+				return new FloatingLayoutEngine(this, newInnerLayoutEngine, newEngine);
 			}
 		}
 
 		return UpdateInner(InnerLayoutEngine.MoveWindowEdgesInDirection(edge, deltas, window), window);
 	}
 
-	private bool IsWindowFloating(IWindow window) =>
-		_plugin.FloatingWindows.TryGetValue(window, out ISet<LayoutEngineIdentity>? layoutEngines)
+	private bool IsWindowFloating(IWindow? window) =>
+		window != null && _plugin.FloatingWindows.TryGetValue(window, out ISet<LayoutEngineIdentity>? layoutEngines)
 		&& layoutEngines.Contains(InnerLayoutEngine.Identity);
 
 	/// <inheritdoc />
 	public override IEnumerable<IWindowState> DoLayout(IRectangle<int> rectangle, IMonitor monitor)
 	{
-		Logger.Error("XxXXXXXxXXXXXxXXXXXxXXXXXxXXXX");
 		// Iterate over all windows in the free layout engine.
 		foreach (IWindowState windowState in _freeLayoutEngine.DoLayout(rectangle, monitor))
 		{
@@ -225,7 +223,7 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 	/// <inheritdoc />
 	public override ILayoutEngine PerformCustomAction<T>(LayoutEngineCustomAction<T> action)
 	{
-		if (action.Window != null && IsWindowFloating(action.Window))
+		if (IsWindowFloating(action.Window))
 		{
 			// At this stage, we don't have a way to get the window in a child layout engine at
 			// a given point.
