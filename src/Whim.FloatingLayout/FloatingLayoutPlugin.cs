@@ -80,12 +80,12 @@ public class FloatingLayoutPlugin : IFloatingLayoutPlugin, IInternalFloatingLayo
 
 		if (markAsFloating)
 		{
-			Logger.Debug($"Marking window {window} as floating");
+			Logger.Error($"Marking window {window} as floating");
 			layoutEngines.Add(layoutEngineIdentity);
 		}
 		else
 		{
-			Logger.Debug($"Marking window {window} as docked");
+			Logger.Error($"Marking window {window} as docked");
 			layoutEngines.Remove(layoutEngineIdentity);
 		}
 

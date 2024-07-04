@@ -1,6 +1,4 @@
 using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Linq;
 
 namespace Whim.FloatingLayout;
 
@@ -11,10 +9,10 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 {
 	private readonly IContext _context;
 	private readonly IInternalFloatingLayoutPlugin _plugin;
-	private readonly ImmutableDictionary<IWindow, IRectangle<double>> _floatingWindowRects;
+	private FreeLayoutEngine _freeLayoutEngine;
 
 	/// <inheritdoc />
-	public override int Count => InnerLayoutEngine.Count + _floatingWindowRects.Count;
+	public override int Count => InnerLayoutEngine.Count + _freeLayoutEngine.Count;
 
 	/// <summary>
 	/// Creates a new instance of the proxy layout engine <see cref="FloatingLayoutEngine"/>.
@@ -27,7 +25,7 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 	{
 		_context = context;
 		_plugin = plugin;
-		_floatingWindowRects = ImmutableDictionary<IWindow, IRectangle<double>>.Empty;
+		_freeLayoutEngine = new FreeLayoutEngine(context, Identity);
 	}
 
 	private FloatingLayoutEngine(FloatingLayoutEngine oldEngine, ILayoutEngine newInnerLayoutEngine)
@@ -35,17 +33,17 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 	{
 		_context = oldEngine._context;
 		_plugin = oldEngine._plugin;
-		_floatingWindowRects = oldEngine._floatingWindowRects;
+		_freeLayoutEngine = oldEngine._freeLayoutEngine;
 	}
 
 	private FloatingLayoutEngine(
 		FloatingLayoutEngine oldEngine,
 		ILayoutEngine newInnerLayoutEngine,
-		ImmutableDictionary<IWindow, IRectangle<double>> floatingWindowRects
+		FreeLayoutEngine freeLayoutEngine
 	)
 		: this(oldEngine, newInnerLayoutEngine)
 	{
-		_floatingWindowRects = floatingWindowRects;
+		_freeLayoutEngine = freeLayoutEngine;
 	}
 
 	/// <summary>
@@ -61,12 +59,12 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 	/// <returns></returns>
 	private FloatingLayoutEngine UpdateInner(ILayoutEngine newInnerLayoutEngine, IWindow? gcWindow)
 	{
-		ImmutableDictionary<IWindow, IRectangle<double>> newFloatingWindowRects =
-			gcWindow != null ? _floatingWindowRects.Remove(gcWindow) : _floatingWindowRects;
+		FreeLayoutEngine newFreeLayoutEngine =
+			gcWindow != null ? (FreeLayoutEngine)_freeLayoutEngine.RemoveWindow(gcWindow) : _freeLayoutEngine;
 
-		return InnerLayoutEngine == newInnerLayoutEngine && _floatingWindowRects == newFloatingWindowRects
+		return InnerLayoutEngine == newInnerLayoutEngine && _freeLayoutEngine == newFreeLayoutEngine
 			? this
-			: new FloatingLayoutEngine(this, newInnerLayoutEngine, newFloatingWindowRects);
+			: new FloatingLayoutEngine(this, newInnerLayoutEngine, newFreeLayoutEngine);
 	}
 
 	/// <inheritdoc />
@@ -76,10 +74,11 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 		// update the rectangle and return.
 		if (IsWindowFloating(window))
 		{
-			(FloatingLayoutEngine newEngine, bool error) = UpdateWindowRectangle(window);
-			if (!error)
+			FreeLayoutEngine newEngine = (FreeLayoutEngine)_freeLayoutEngine.AddWindow(window);
+			if (newEngine != _freeLayoutEngine)
 			{
-				return newEngine;
+				ILayoutEngine newInnerLayoutEngine = InnerLayoutEngine.RemoveWindow(window);
+				return new FloatingLayoutEngine(this, newInnerLayoutEngine, newEngine);
 			}
 		}
 
@@ -93,14 +92,14 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 
 		// If tracked by this layout engine, remove it.
 		// Otherwise, pass to the inner layout engine.
-		if (_floatingWindowRects.ContainsKey(window))
+		if (_freeLayoutEngine.ContainsWindow(window))
 		{
 			_plugin.MarkWindowAsDockedInLayoutEngine(window, InnerLayoutEngine.Identity);
 
 			// If the window was not supposed to be floating, remove it from the inner layout engine.
 			if (isFloating)
 			{
-				return new FloatingLayoutEngine(this, InnerLayoutEngine, _floatingWindowRects.Remove(window));
+				return new FloatingLayoutEngine(this, InnerLayoutEngine, (FreeLayoutEngine)_freeLayoutEngine.RemoveWindow(window));
 			}
 		}
 
@@ -113,10 +112,11 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 		// If the window is floating, update the rectangle and return.
 		if (IsWindowFloating(window))
 		{
-			(FloatingLayoutEngine newEngine, bool error) = UpdateWindowRectangle(window);
-			if (!error)
+			FreeLayoutEngine newEngine = (FreeLayoutEngine)_freeLayoutEngine.MoveWindowToPoint(window, point);
+			if (newEngine != _freeLayoutEngine)
 			{
-				return newEngine;
+				ILayoutEngine newInnerLayoutEngine = InnerLayoutEngine.RemoveWindow(window);
+				return new FloatingLayoutEngine(this, newInnerLayoutEngine, newEngine);
 			}
 		}
 
@@ -129,66 +129,28 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 		// If the window is floating, update the rectangle and return.
 		if (IsWindowFloating(window))
 		{
-			(FloatingLayoutEngine newEngine, bool error) = UpdateWindowRectangle(window);
-			if (!error)
+			FreeLayoutEngine newEngine = (FreeLayoutEngine)_freeLayoutEngine.MoveWindowEdgesInDirection(edge, deltas, window);
+			if (newEngine != _freeLayoutEngine)
 			{
-				return newEngine;
+				ILayoutEngine newInnerLayoutEngine = InnerLayoutEngine.RemoveWindow(window);
+				return new FloatingLayoutEngine(this, newInnerLayoutEngine, newEngine);
 			}
 		}
 
 		return UpdateInner(InnerLayoutEngine.MoveWindowEdgesInDirection(edge, deltas, window), window);
 	}
 
-	private bool IsWindowFloating(IWindow window) =>
-		_plugin.FloatingWindows.TryGetValue(window, out ISet<LayoutEngineIdentity>? layoutEngines)
+	private bool IsWindowFloating(IWindow? window) =>
+		window != null && _plugin.FloatingWindows.TryGetValue(window, out ISet<LayoutEngineIdentity>? layoutEngines)
 		&& layoutEngines.Contains(InnerLayoutEngine.Identity);
-
-	private (FloatingLayoutEngine, bool error) UpdateWindowRectangle(IWindow window)
-	{
-		// Try get the old rectangle.
-		IRectangle<double>? oldRectangle = _floatingWindowRects.TryGetValue(window, out IRectangle<double>? rectangle)
-			? rectangle
-			: null;
-
-		// Since the window is floating, we update the rectangle, and return.
-		IRectangle<int>? newActualRectangle = _context.NativeManager.DwmGetWindowRectangle(window.Handle);
-		if (newActualRectangle == null)
-		{
-			Logger.Error($"Could not obtain rectangle for floating window {window}");
-			return (this, true);
-		}
-
-		IMonitor newMonitor = _context.MonitorManager.GetMonitorAtPoint(newActualRectangle);
-		IRectangle<double> newUnitSquareRectangle = newMonitor.WorkingArea.NormalizeRectangle(newActualRectangle);
-		if (newUnitSquareRectangle.Equals(oldRectangle))
-		{
-			Logger.Debug($"Rectangle for window {window} has not changed");
-			return (this, false);
-		}
-
-		ILayoutEngine innerLayoutEngine = InnerLayoutEngine.RemoveWindow(window);
-		return (
-			new FloatingLayoutEngine(
-				this,
-				innerLayoutEngine,
-				_floatingWindowRects.SetItem(window, newUnitSquareRectangle)
-			),
-			false
-		);
-	}
 
 	/// <inheritdoc />
 	public override IEnumerable<IWindowState> DoLayout(IRectangle<int> rectangle, IMonitor monitor)
 	{
-		// Iterate over all windows in _floatingWindowRects.
-		foreach ((IWindow window, IRectangle<double> loc) in _floatingWindowRects)
+		// Iterate over all windows in the free layout engine.
+		foreach (IWindowState windowState in _freeLayoutEngine.DoLayout(rectangle, monitor))
 		{
-			yield return new WindowState()
-			{
-				Window = window,
-				Rectangle = rectangle.ToMonitor(loc),
-				WindowSize = WindowSize.Normal
-			};
+			yield return windowState;
 		}
 
 		// Iterate over all windows in the inner layout engine.
@@ -206,9 +168,9 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 			return window;
 		}
 
-		if (_floatingWindowRects.Count > 0)
+		if (_freeLayoutEngine.Count > 0)
 		{
-			return _floatingWindowRects.Keys.First();
+			return _freeLayoutEngine.GetFirstWindow();
 		}
 
 		return null;
@@ -223,7 +185,9 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 			// a given point.
 			// As a workaround, we just focus the first window.
 			InnerLayoutEngine.GetFirstWindow()?.Focus();
-			return this;
+			FreeLayoutEngine newEngine = (FreeLayoutEngine)_freeLayoutEngine.FocusWindowInDirection(direction, window);
+			return new FloatingLayoutEngine(this, InnerLayoutEngine, newEngine);
+
 		}
 
 		return UpdateInner(InnerLayoutEngine.FocusWindowInDirection(direction, window), window);
@@ -237,7 +201,8 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 			// At this stage, we don't have a way to get the window in a child layout engine at
 			// a given point.
 			// For now, we do nothing.
-			return this;
+			FreeLayoutEngine newEngine = (FreeLayoutEngine)_freeLayoutEngine.SwapWindowInDirection(direction, window);
+			return new FloatingLayoutEngine(this, InnerLayoutEngine, newEngine);
 		}
 
 		return UpdateInner(InnerLayoutEngine.SwapWindowInDirection(direction, window), window);
@@ -245,7 +210,7 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 
 	/// <inheritdoc />
 	public override bool ContainsWindow(IWindow window) =>
-		_floatingWindowRects.ContainsKey(window) || InnerLayoutEngine.ContainsWindow(window);
+		_freeLayoutEngine.ContainsWindow(window) || InnerLayoutEngine.ContainsWindow(window);
 
 	/// <inheritdoc />
 	public override ILayoutEngine MinimizeWindowStart(IWindow window) =>
@@ -258,12 +223,13 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 	/// <inheritdoc />
 	public override ILayoutEngine PerformCustomAction<T>(LayoutEngineCustomAction<T> action)
 	{
-		if (action.Window != null && IsWindowFloating(action.Window))
+		if (IsWindowFloating(action.Window))
 		{
 			// At this stage, we don't have a way to get the window in a child layout engine at
 			// a given point.
 			// For now, we do nothing.
-			return this;
+			FreeLayoutEngine newEngine = (FreeLayoutEngine)_freeLayoutEngine.PerformCustomAction(action);
+			return new FloatingLayoutEngine(this, InnerLayoutEngine, newEngine);
 		}
 
 		return UpdateInner(InnerLayoutEngine.PerformCustomAction(action), action.Window);
