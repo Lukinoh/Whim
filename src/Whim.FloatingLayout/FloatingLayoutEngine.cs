@@ -11,10 +11,10 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 {
 	private readonly IContext _context;
 	private readonly IInternalFloatingLayoutPlugin _plugin;
-	private readonly FreeLayoutEngine _freeLayoutEngine;
+	private readonly FloatingManager<FloatingLayoutEngine> _floatingManager;
 
 	/// <inheritdoc />
-	public override int Count => InnerLayoutEngine.Count + _freeLayoutEngine.Count;
+	public override int Count => InnerLayoutEngine.Count + _floatingManager.Count;
 
 	/// <summary>
 	/// Creates a new instance of the proxy layout engine <see cref="FloatingLayoutEngine"/>.
@@ -27,7 +27,7 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 	{
 		_context = context;
 		_plugin = plugin;
-		_freeLayoutEngine = new FreeLayoutEngine(context, Identity);
+		_floatingManager = new FloatingManager<FloatingLayoutEngine>(context, floatingManager => new FloatingLayoutEngine(this, innerLayoutEngine, floatingManager));
 	}
 
 	private FloatingLayoutEngine(FloatingLayoutEngine oldEngine, ILayoutEngine newInnerLayoutEngine)
@@ -35,17 +35,17 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 	{
 		_context = oldEngine._context;
 		_plugin = oldEngine._plugin;
-		_freeLayoutEngine = oldEngine._freeLayoutEngine;
+		_floatingManager = oldEngine._floatingManager;
 	}
 
 	private FloatingLayoutEngine(
 		FloatingLayoutEngine oldEngine,
 		ILayoutEngine newInnerLayoutEngine,
-		FreeLayoutEngine freeLayoutEngine
+		FloatingManager<FloatingLayoutEngine> floatingManager
 	)
 		: this(oldEngine, newInnerLayoutEngine)
 	{
-		_freeLayoutEngine = freeLayoutEngine;
+		_floatingManager = floatingManager;
 	}
 
 	/// <summary>
@@ -61,26 +61,27 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 	/// <returns></returns>
 	private FloatingLayoutEngine UpdateInner(ILayoutEngine newInnerLayoutEngine, IWindow? gcWindow)
 	{
-		FreeLayoutEngine newFreeLayoutEngine =
-			gcWindow != null ? (FreeLayoutEngine)_freeLayoutEngine.RemoveWindow(gcWindow) : _freeLayoutEngine;
+		(FloatingLayoutEngine newEngine, bool _) =
+			gcWindow != null ? _floatingManager.RemoveWindow(this, gcWindow) : (this, false);
 
-		return InnerLayoutEngine == newInnerLayoutEngine && _freeLayoutEngine == newFreeLayoutEngine
+		return InnerLayoutEngine == newInnerLayoutEngine && this == newEngine
 			? this
-			: new FloatingLayoutEngine(this, newInnerLayoutEngine, newFreeLayoutEngine);
+			: new FloatingLayoutEngine(newEngine, newInnerLayoutEngine);
 	}
 
 	/// <inheritdoc />
 	public override ILayoutEngine AddWindow(IWindow window)
 	{
+		Logger.Error("DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD");
 		// If the window is already tracked by this layout engine, or is a new floating window,
 		// update the rectangle and return.
 		if (IsWindowFloating(window))
 		{
-			FreeLayoutEngine newEngine = (FreeLayoutEngine)_freeLayoutEngine.AddWindow(window);
-			if (newEngine != _freeLayoutEngine)
+			(FloatingLayoutEngine newEngine, bool error) = _floatingManager.AddWindow(this, window);
+			if (!error)
 			{
 				ILayoutEngine newInnerLayoutEngine = InnerLayoutEngine.RemoveWindow(window);
-				return new FloatingLayoutEngine(this, newInnerLayoutEngine, newEngine);
+				return new FloatingLayoutEngine(newEngine, newInnerLayoutEngine);
 			}
 		}
 
@@ -94,14 +95,15 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 
 		// If tracked by this layout engine, remove it.
 		// Otherwise, pass to the inner layout engine.
-		if (_freeLayoutEngine.ContainsWindow(window))
+		if (_floatingManager.ContainsWindow(window))
 		{
 			_plugin.MarkWindowAsDockedInLayoutEngine(window, InnerLayoutEngine.Identity);
 
 			// If the window was not supposed to be floating, remove it from the inner layout engine.
 			if (isFloating)
 			{
-				return new FloatingLayoutEngine(this, InnerLayoutEngine, (FreeLayoutEngine)_freeLayoutEngine.RemoveWindow(window));
+				(FloatingLayoutEngine newEngine, bool error) = _floatingManager.RemoveWindow(this, window);
+				return newEngine;
 			}
 		}
 
@@ -114,16 +116,17 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 		// If the window is floating, update the rectangle and return.
 		if (IsWindowFloating(window))
 		{
-			FreeLayoutEngine newEngine = (FreeLayoutEngine)_freeLayoutEngine.MoveWindowToPoint(window, point);
-			if (newEngine != _freeLayoutEngine)
+			(FloatingLayoutEngine newEngine, bool error) = _floatingManager.UpdateWindowRectangle(this, window);
+			if (!error)
 			{
 				ILayoutEngine newInnerLayoutEngine = InnerLayoutEngine.RemoveWindow(window);
-				return new FloatingLayoutEngine(this, newInnerLayoutEngine, newEngine);
+				return new FloatingLayoutEngine(newEngine, newInnerLayoutEngine);
 			}
 		}
 
 		return UpdateInner(InnerLayoutEngine.MoveWindowToPoint(window, point), window);
 	}
+	
 
 	/// <inheritdoc />
 	public override ILayoutEngine MoveWindowEdgesInDirection(Direction edge, IPoint<double> deltas, IWindow window)
@@ -131,11 +134,11 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 		// If the window is floating, update the rectangle and return.
 		if (IsWindowFloating(window))
 		{
-			FreeLayoutEngine newEngine = (FreeLayoutEngine)_freeLayoutEngine.MoveWindowEdgesInDirection(edge, deltas, window);
-			if (newEngine != _freeLayoutEngine)
+			(FloatingLayoutEngine newEngine, bool error) = _floatingManager.UpdateWindowRectangle(this, window);
+			if (!error)
 			{
 				ILayoutEngine newInnerLayoutEngine = InnerLayoutEngine.RemoveWindow(window);
-				return new FloatingLayoutEngine(this, newInnerLayoutEngine, newEngine);
+				return new FloatingLayoutEngine(newEngine, newInnerLayoutEngine);
 			}
 		}
 
@@ -149,8 +152,8 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 	/// <inheritdoc />
 	public override IEnumerable<IWindowState> DoLayout(IRectangle<int> rectangle, IMonitor monitor)
 	{
-		// Iterate over all windows in the free layout engine.
-		foreach (IWindowState windowState in _freeLayoutEngine.DoLayout(rectangle, monitor))
+		// Iterate over all windows in the floating manager.
+		foreach (IWindowState windowState in _floatingManager.DoLayout(monitor))
 		{
 			yield return windowState;
 		}
@@ -165,7 +168,7 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 	/// <inheritdoc />
 	public override IWindow? GetFirstWindow()
 	{
-		return InnerLayoutEngine.GetFirstWindow() ?? _freeLayoutEngine.GetFirstWindow();
+		return InnerLayoutEngine.GetFirstWindow() ?? _floatingManager.GetFirstWindow();
 	}
 
 	/// <inheritdoc />
@@ -177,8 +180,7 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 			// a given point.
 			// As a workaround, we just focus the first window.
 			InnerLayoutEngine.GetFirstWindow()?.Focus();
-			FreeLayoutEngine newEngine = (FreeLayoutEngine)_freeLayoutEngine.FocusWindowInDirection(direction, window);
-			return new FloatingLayoutEngine(this, InnerLayoutEngine, newEngine);
+			return this;
 		}
 
 		return UpdateInner(InnerLayoutEngine.FocusWindowInDirection(direction, window), window);
@@ -192,8 +194,7 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 			// At this stage, we don't have a way to get the window in a child layout engine at
 			// a given point.
 			// For now, we do nothing.
-			FreeLayoutEngine newEngine = (FreeLayoutEngine)_freeLayoutEngine.SwapWindowInDirection(direction, window);
-			return new FloatingLayoutEngine(this, InnerLayoutEngine, newEngine);
+			return this;
 		}
 
 		return UpdateInner(InnerLayoutEngine.SwapWindowInDirection(direction, window), window);
@@ -201,7 +202,7 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 
 	/// <inheritdoc />
 	public override bool ContainsWindow(IWindow window) =>
-		_freeLayoutEngine.ContainsWindow(window) || InnerLayoutEngine.ContainsWindow(window);
+		_floatingManager.ContainsWindow(window) || InnerLayoutEngine.ContainsWindow(window);
 
 	// TODO: Fix those function ?
 	/// <inheritdoc />
@@ -220,8 +221,7 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 			// At this stage, we don't have a way to get the window in a child layout engine at
 			// a given point.
 			// For now, we do nothing.
-			FreeLayoutEngine newEngine = (FreeLayoutEngine)_freeLayoutEngine.PerformCustomAction(action);
-			return new FloatingLayoutEngine(this, InnerLayoutEngine, newEngine);
+			return this;
 		}
 
 		return UpdateInner(InnerLayoutEngine.PerformCustomAction(action), action.Window);
