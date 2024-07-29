@@ -27,7 +27,11 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 	{
 		_context = context;
 		_plugin = plugin;
-		_floatingManager = new FloatingManager<FloatingLayoutEngine>(context, floatingManager => new FloatingLayoutEngine(this, innerLayoutEngine, floatingManager));
+		_floatingManager = new FloatingManager<FloatingLayoutEngine>(context, (floatingManager, window) =>
+		{
+			ILayoutEngine newInner = innerLayoutEngine.RemoveWindow(window);
+			return new FloatingLayoutEngine(this, newInner, floatingManager);
+		});
 	}
 
 	private FloatingLayoutEngine(FloatingLayoutEngine oldEngine, ILayoutEngine newInnerLayoutEngine)
@@ -80,8 +84,7 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 			(FloatingLayoutEngine newEngine, bool error) = _floatingManager.AddWindow(this, window);
 			if (!error)
 			{
-				ILayoutEngine newInnerLayoutEngine = InnerLayoutEngine.RemoveWindow(window);
-				return new FloatingLayoutEngine(newEngine, newInnerLayoutEngine);
+				return newEngine;
 			}
 		}
 
@@ -135,7 +138,7 @@ internal record FloatingLayoutEngine : BaseProxyLayoutEngine
 		if (IsWindowFloating(window))
 		{
 			(FloatingLayoutEngine newEngine, bool error) = _floatingManager.UpdateWindowRectangle(this, window);
-			if (!error)
+			if (!error && newEngine != this)
 			{
 				ILayoutEngine newInnerLayoutEngine = InnerLayoutEngine.RemoveWindow(window);
 				return new FloatingLayoutEngine(newEngine, newInnerLayoutEngine);

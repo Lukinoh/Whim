@@ -29,7 +29,7 @@ public class FreeLayoutEngine : ILayoutEngine
 	{
 		Identity = identity;
 		_context = context;
-		_floatingManager = new FloatingManager<FreeLayoutEngine>(_context, (floatingManager) => new FreeLayoutEngine(this, floatingManager));
+		_floatingManager = new FloatingManager<FreeLayoutEngine>(_context, (floatingManager, window) => new FreeLayoutEngine(this, floatingManager));
 	}
 
 	private FreeLayoutEngine(FreeLayoutEngine layoutEngine, FloatingManager<FreeLayoutEngine> floatingManager)

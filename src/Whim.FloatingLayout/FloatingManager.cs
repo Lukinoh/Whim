@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace Whim.FloatingLayout;
 
-public delegate T NewLayout<T>(FloatingManager<T> floatingManager);
+public delegate T NewLayout<T>(FloatingManager<T> floatingManager, IWindow window);
 
 public class FloatingManager<T>
 {
@@ -31,11 +31,6 @@ public class FloatingManager<T>
 	
 	public (T, bool error) AddWindow(T layoutEngine, IWindow window)
 	{
-		if (_dict.ContainsKey(window))
-		{
-			return (layoutEngine, false);
-		}
-
 		return UpdateWindowRectangle(layoutEngine, window);
 	}
 
@@ -44,7 +39,7 @@ public class FloatingManager<T>
 		if (_dict.ContainsKey(window))
 		{
 			ImmutableDictionary<IWindow, IRectangle<double>> newDict = _dict.Remove(window);
-			return (_newLayoutCallback(new FloatingManager<T>(this, newDict)), false);
+			return (_newLayoutCallback(new FloatingManager<T>(this, newDict), window), false);
 		}
 
 		return (layoutEngine, false);
@@ -99,6 +94,6 @@ public class FloatingManager<T>
 
 		ImmutableDictionary<IWindow, IRectangle<double>> newDict = _dict.SetItem(window, newUnitSquareRectangle);
 
-		return (_newLayoutCallback(new FloatingManager<T>(this, newDict)), false);
+		return (_newLayoutCallback(new FloatingManager<T>(this, newDict), window), false);
 	}
 }
