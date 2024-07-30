@@ -59,8 +59,8 @@ void DoConfig(IContext context)
 	context.PluginManager.AddPlugin(gapsPlugin);
 
 	// Floating window plugin.
-	FloatingLayoutPlugin floatingLayoutPlugin = new(context);
-	context.PluginManager.AddPlugin(floatingLayoutPlugin);
+	ProxyFloatingLayoutPlugin proxyFloatingLayoutPlugin = new(context);
+	context.PluginManager.AddPlugin(proxyFloatingLayoutPlugin);
 
 	// Focus indicator.
 	FocusIndicatorConfig focusIndicatorConfig = new() { Color = new SolidColorBrush(Colors.Red), FadeEnabled = true };
