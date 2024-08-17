@@ -48,4 +48,5 @@ public interface IMonitorManager : IEnumerable<IMonitor>, IDisposable
 	/// </summary>
 	/// <returns></returns>
 	IMonitor GetNextMonitor(IMonitor monitor);
+	IMonitor GetMonitorByWindow(HWND handle);
 }

@@ -46,6 +46,8 @@ internal class MonitorManager(IContext context) : IInternalMonitorManager, IMoni
 	public IMonitor GetMonitorAtPoint(IPoint<int> point) =>
 		_context.Store.Pick(PickMonitorAtPoint(point, getFirst: true)).Value;
 
+	public IMonitor GetMonitorByWindow(HWND window) => _context.Store.Pick(PickMonitorByWindow(window)).Value;
+
 	public IMonitor GetPreviousMonitor(IMonitor monitor) =>
 		_context.Store.Pick(PickAdjacentMonitor(monitor.Handle, reverse: true, getFirst: true)).Value;
 

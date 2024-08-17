@@ -37,6 +37,8 @@ public record MoveWindowToPointTransform(HWND WindowHandle, IPoint<int> Point) :
 		// Normalize `point` into the unit square.
 		IPoint<double> normalized = targetMonitor.WorkingArea.NormalizeAbsolutePoint(Point);
 
+		Logger.Error($"MoveWindowToPointTransform - targetMonitor: {targetMonitor}");
+
 		Logger.Debug(
 			$"Moving window {WindowHandle} to workspace {targetWorkspace} in monitor {targetMonitor} at normalized point {normalized}"
 		);
