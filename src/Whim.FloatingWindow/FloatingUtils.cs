@@ -34,12 +34,15 @@ internal static class FloatingUtils
 			return null;
 		}
 
+		// internalCtx.CoreNativeManager.GetCursorPos(out point);
 		Result<IMonitor> newMonitorResult = context.Store.Pick(Pickers.PickMonitorByWindow(window.Handle));
 		if (!newMonitorResult.TryGet(out IMonitor newMonitor))
 		{
 			Logger.Error($"Could not obtain monitor for floating window {window}");
 			return null;
 		}
+
+		Logger.Error($"FloatingUtils.UpdateWindowRectangle - newMonitor: {newMonitor}");
 
 		IRectangle<double> newUnitSquareRectangle = newMonitor.WorkingArea.NormalizeRectangle(newActualRectangle);
 		if (newUnitSquareRectangle.Equals(oldRectangle))

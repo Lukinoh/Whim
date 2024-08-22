@@ -22,6 +22,8 @@ public record MoveWindowEdgesInDirectionTransform(
 {
 	internal override Result<Unit> Execute(IContext ctx, IInternalContext internalCtx, MutableRootSector rootSector)
 	{
+		Logger.Error($"PIXELS DELTA {PixelsDeltas}");
+
 		HWND windowHandle = WindowHandle.OrLastFocusedWindow(ctx);
 		if (windowHandle == default)
 		{
@@ -34,27 +36,59 @@ public record MoveWindowEdgesInDirectionTransform(
 			return Result.FromException<Unit>(windowResult.Error!);
 		}
 
-		// Get the containing workspace.
-		Result<IWorkspace> workspaceResult = ctx.Store.Pick(PickWorkspaceByWindow(windowHandle));
-		if (!workspaceResult.TryGet(out IWorkspace workspace))
+		// New
+		IRectangle<int>? newRectangle = ctx.NativeManager.DwmGetWindowRectangle(windowHandle);
+		if (newRectangle == null)
 		{
-			return Result.FromException<Unit>(workspaceResult.Error!);
+			// TOFIX
+			return Result.FromException<Unit>(StoreExceptions.NoValidWindow());
 		}
 
-		// Get the containing monitor.
-		Result<IMonitor> monitorResult = ctx.Store.Pick(PickMonitorByWindow(windowHandle));
-		if (!monitorResult.TryGet(out IMonitor monitor))
+		IPoint<int> newRectanglePoint = new Point<int>(newRectangle.X, newRectangle.Y);
+		Result<IMonitor> newMonitorResult = ctx.Store.Pick(PickMonitorAtPoint(newRectanglePoint));
+		if (!newMonitorResult.TryGet(out IMonitor newMonitor))
 		{
-			return Result.FromException<Unit>(monitorResult.Error!);
+			return Result.FromException<Unit>(StoreExceptions.NoMonitorFoundAtPoint(newRectanglePoint));
 		}
 
-		Logger.Debug($"Moving window {windowHandle} to workspace {workspace}");
+		Result<IWorkspace> newWorkspaceResult = ctx.Store.Pick(PickWorkspaceByMonitor(newMonitor.Handle));
+		if (!newWorkspaceResult.TryGet(out IWorkspace newWorkspace))
+		{
+			return Result.FromException<Unit>(newWorkspaceResult.Error!);
+		}
+
+		Logger.Error($"New rectangle {newRectangle}");
+		Logger.Error($"New Monitor {newMonitor}");
+
+		// Old
+		Result<IWorkspace> oldWorkspaceResult = ctx.Store.Pick(PickWorkspaceByWindow(windowHandle));
+		if (!oldWorkspaceResult.TryGet(out IWorkspace oldWorkspace))
+		{
+			return Result.FromException<Unit>(oldWorkspaceResult.Error!);
+		}
+
+		// If the window is being moved to a different workspace, remove it from the current workspace.
+		if (newWorkspace.Id != oldWorkspace.Id)
+		{
+			rootSector.MapSector.WindowWorkspaceMap = rootSector.MapSector.WindowWorkspaceMap.SetItem(
+				WindowHandle,
+				newWorkspace.Id
+			);
+			oldWorkspace.RemoveWindow(window: window);
+			oldWorkspace.DoLayout();
+		}
 
 		// Normalize `PixelsDeltas` into the unit square.
-		IPoint<double> normalized = monitor.WorkingArea.NormalizeDeltaPoint(PixelsDeltas);
+		IPoint<double> normalized = newMonitor.WorkingArea.NormalizeDeltaPoint(PixelsDeltas);
 
 		Logger.Debug($"Normalized point: {normalized}");
-		workspace.MoveWindowEdgesInDirection(Edges, normalized, window, deferLayout: false);
+		newWorkspace.MoveWindowEdgesInDirection(Edges, normalized, window, deferLayout: false);
+
+		Result<IWorkspace> workspaceResult = ctx.Store.Pick(Pickers.PickWorkspaceByWindow(window.Handle));
+		if (workspaceResult.TryGet(out IWorkspace workspace))
+		{
+			Logger.Error($"WORKSPACE ID ${workspace}");
+		}
 		return Unit.Result;
 	}
 }

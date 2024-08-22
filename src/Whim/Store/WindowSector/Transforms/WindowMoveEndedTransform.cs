@@ -21,6 +21,8 @@ internal record WindowMoveEndedTransform(IWindow Window) : Transform
 		if (WindowUtils.GetMovedEdges(ctx, Window) is (Direction, IPoint<int>) moved)
 		{
 			movedEdges = moved.MovedEdges;
+			// internalCtx.CoreNativeManager.GetCursorPos(out point);
+			// ctx.Butler.MoveWindowToPoint(Window, point);
 			ctx.Butler.MoveWindowEdgesInDirection(moved.MovedEdges, moved.MovedPoint, Window);
 		}
 		else if (internalCtx.CoreNativeManager.GetCursorPos(out point))
